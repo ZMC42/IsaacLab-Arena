@@ -49,36 +49,31 @@ class G1HomiePolicyV2(WBCPolicy):
         self.use_policy_action = True
         self.action = np.zeros((self.num_envs, self.config["num_actions"]), dtype=np.float32)
         self.target_dof_pos = self.config["default_angles"].copy()
-        self.cmd = self.config["cmd_init"].copy()
-        self.height_cmd = self.config["height_cmd"]
+        self.cmd = np.tile(self.config["cmd_init"], (self.num_envs, 1))
+        self.height_cmd = np.full((self.num_envs, 1), self.config["height_cmd"], dtype=np.float32)
         self.freq_cmd = self.config["freq_cmd"]
-        self.roll_cmd = self.config["rpy_cmd"][0]
-        self.pitch_cmd = self.config["rpy_cmd"][1]
-        self.yaw_cmd = self.config["rpy_cmd"][2]
+        self.roll_cmd = np.full(self.num_envs, self.config["rpy_cmd"][0], dtype=np.float32)
+        self.pitch_cmd = np.full(self.num_envs, self.config["rpy_cmd"][1], dtype=np.float32)
+        self.yaw_cmd = np.full(self.num_envs, self.config["rpy_cmd"][2], dtype=np.float32)
         self.gait_indices = torch.zeros((self.num_envs, 1), dtype=torch.float32)
 
     def reset(self, env_ids: torch.Tensor):
-        """Reset the policy.
+        """Reset controller state only for the selected environments.
 
         Args:
             env_ids: The environment ids to reset
         """
-        self.gait_indices = torch.zeros((self.num_envs, 1), dtype=torch.float32)
-        # Initialize observation history buffer
-        self.observation = None
-        self.obs_history = collections.deque(maxlen=self.config["obs_history_len"])
-        self.obs_buffer = np.zeros((self.num_envs, self.config["num_obs"]), dtype=np.float32)
-
-        # Initialize state variables
-        self.use_policy_action = True
-        self.action = np.zeros((self.num_envs, self.config["num_actions"]), dtype=np.float32)
-        self.target_dof_pos = self.config["default_angles"].copy()
-        self.cmd = self.config["cmd_init"].copy()
-        self.height_cmd = self.config["height_cmd"]
-        self.freq_cmd = self.config["freq_cmd"]
-        self.roll_cmd = self.config["rpy_cmd"][0]
-        self.pitch_cmd = self.config["rpy_cmd"][1]
-        self.yaw_cmd = self.config["rpy_cmd"][2]
+        ids = env_ids.cpu().numpy()
+        self.gait_indices[ids] = 0
+        self.obs_buffer[ids] = 0
+        for observation in self.obs_history:
+            observation[ids] = 0
+        self.action[ids] = 0
+        self.cmd[ids] = self.config["cmd_init"]
+        self.height_cmd[ids] = self.config["height_cmd"]
+        self.roll_cmd[ids] = self.config["rpy_cmd"][0]
+        self.pitch_cmd[ids] = self.config["rpy_cmd"][1]
+        self.yaw_cmd[ids] = self.config["rpy_cmd"][2]
 
     def compute_observation(self, observation: dict[str, Any]) -> tuple[np.ndarray, int]:
         """Compute the observation vector from current state"""
@@ -216,17 +211,12 @@ class G1HomiePolicyV2(WBCPolicy):
 
         # Run policy inference
         with torch.no_grad():
-            # Select appropriate policy based on command magnitude
-            if np.linalg.norm(self.cmd) < 0.05:
-                # Use standing policy for small commands
-                policy = self.policy_1
-            else:
-                # Use walking policy for movement commands
-                policy = self.policy_2
-
-            ort_inputs = {policy.input_names[0]: self.obs_tensor.cpu().numpy()}
-            result = policy.run(ort_inputs)
-            self.action = list(result.values())[0]
+            standing = np.linalg.norm(self.cmd, axis=1) < 0.05
+            observations = self.obs_tensor.cpu().numpy()
+            for policy, mask in ((self.policy_1, standing), (self.policy_2, ~standing)):
+                if mask.any():
+                    result = policy.run({policy.input_names[0]: observations[mask]})
+                    self.action[mask] = next(iter(result.values()))
 
         # Transform action to target_dof_pos
         assert self.use_policy_action
