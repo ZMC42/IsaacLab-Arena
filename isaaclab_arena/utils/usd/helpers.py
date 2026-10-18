@@ -13,6 +13,8 @@ from contextlib import contextmanager
 
 from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
 
+from isaaclab.utils.assets import retrieve_file_path
+
 from isaaclab_arena.assets.object_type import ObjectType
 from isaaclab_arena.utils.bounding_box import AxisAlignedBoundingBox
 from isaaclab_arena.utils.usd.articulation import (
@@ -150,7 +152,7 @@ def get_prim_depth(prim: Usd.Prim) -> int:
 @contextmanager
 def open_stage(path):
     """Open a stage and ensure it is closed after use."""
-    stage = Usd.Stage.Open(path)
+    stage = Usd.Stage.Open(retrieve_file_path(path))
     try:
         yield stage
     finally:
