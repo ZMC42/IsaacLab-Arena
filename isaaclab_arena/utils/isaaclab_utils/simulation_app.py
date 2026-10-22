@@ -12,6 +12,8 @@ from contextlib import nullcontext, suppress
 
 from isaaclab.app import AppLauncher
 
+from isaaclab_arena.utils.physics_backend import validate_physics_device
+
 
 def get_isaac_sim_version() -> str:
     """Get the version of Isaac Sim."""
@@ -27,6 +29,8 @@ def get_app_launcher(args: argparse.Namespace) -> AppLauncher:
     """Get an app launcher."""
     import time
 
+    if getattr(args, "presets", None) is not None:
+        validate_physics_device(args.presets, args.device)
     t0 = time.monotonic()
     # AppLauncher consumes recognized entries from its input mapping. Pass a copy so
     # Arena can continue using its parsed arguments after the application launches.

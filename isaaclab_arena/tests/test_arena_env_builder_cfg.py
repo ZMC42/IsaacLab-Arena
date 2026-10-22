@@ -19,14 +19,7 @@ from isaaclab_arena.cli.isaaclab_arena_cli import (
 )
 from isaaclab_arena.environments.arena_env_builder_cfg import ArenaEnvBuilderCfg
 from isaaclab_arena.evaluation.policy_runner_cli import add_policy_runner_arguments
-from isaaclab_arena.utils.physics_backend import (
-    PhysicsBackend,
-    canonical_physics_backend,
-    physics_backend_from_name,
-    physics_protocol,
-    resolve_physics_backend,
-    validate_physics_device,
-)
+from isaaclab_arena.utils.physics_backend import PhysicsBackend, physics_protocol, validate_physics_device
 
 
 def test_runtime_protocol_preserves_other_physics_configs():
@@ -122,34 +115,14 @@ def test_builder_configuration_normalizes_physics_backend_strings():
 
 
 @pytest.mark.parametrize(
-    ("name", "backend"),
-    [("isaacsim_physx", PhysicsBackend.PHYSX), ("newton_mjwarp", PhysicsBackend.NEWTON)],
-)
-def test_public_backend_names_map_to_arena_presets(name, backend):
-    """Use the same backend identity across public CLI, presets, and run records."""
-    assert physics_backend_from_name(name) is backend
-    assert canonical_physics_backend(backend) == name
-    assert resolve_physics_backend(name, backend) is backend
-    args_cli = get_isaaclab_arena_cli_parser().parse_args(["--physics-backend", name, "--presets", backend.value])
-    assert arena_env_builder_cfg_from_argparse(args_cli).presets is backend
-
-
-def test_unspecified_backend_preserves_environment_default():
-    """Let environments select their own default when neither selector is given."""
-    assert resolve_physics_backend() is None
-
-
-@pytest.mark.parametrize(
     ("arguments", "requested"),
     [
         ([], None),
         (["--presets", "physx"], "isaacsim_physx"),
         (["--presets", "newton"], "newton_mjwarp"),
-        (["--physics-backend", "isaacsim_physx"], "isaacsim_physx"),
-        (["--physics-backend", "newton_mjwarp", "--presets", "newton"], "newton_mjwarp"),
     ],
 )
-def test_requested_backend_records_public_and_legacy_selectors(arguments, requested):
+def test_requested_backend_records_full_implementation_name(arguments, requested):
     args_cli = get_isaaclab_arena_cli_parser().parse_args(arguments)
 
     assert requested_physics_backend_from_argparse(args_cli) == requested
@@ -161,21 +134,10 @@ def test_backend_validation_keeps_environment_subparser_compatible():
     task_parser = parser.add_subparsers(dest="example_environment").add_parser("example")
     task_parser.add_argument("--task-option")
 
-    args_cli = parser.parse_args(["--physics-backend", "newton_mjwarp", "example", "--task-option", "value"])
+    args_cli = parser.parse_args(["--presets", "newton", "example", "--task-option", "value"])
 
     assert args_cli.task_option == "value"
     assert arena_env_builder_cfg_from_argparse(args_cli).presets is PhysicsBackend.NEWTON
-
-
-def test_unknown_public_backend_is_rejected():
-    with pytest.raises(ValueError, match="Unknown physics backend"):
-        physics_backend_from_name("unknown_backend")
-
-
-def test_conflicting_backend_selectors_are_rejected():
-    """Keep legacy preset input from silently overriding the public selection."""
-    with pytest.raises(ValueError, match="conflicts"):
-        resolve_physics_backend("newton_mjwarp", PhysicsBackend.PHYSX)
 
 
 @pytest.mark.parametrize("device", ["cuda", "cuda:0", "cuda:12"])
@@ -195,29 +157,48 @@ def test_physx_keeps_cpu_and_cuda_support(device):
 
 
 @pytest.mark.parametrize(
-    ("arguments", "message"),
-    [
-        (["--physics-backend", "newton_mjwarp", "--device", "cpu"], "requires a CUDA device"),
-        (["--presets", "newton", "--device", "cpu"], "requires a CUDA device"),
-        (["--physics-backend", "newton_mjwarp", "--presets", "physx"], "conflicts"),
-        (["--presets", "physx", "--physics-backend", "newton_mjwarp"], "conflicts"),
-    ],
+    ("preset", "device"),
+    [("physx", "cpu"), ("physx", "cuda:0"), ("newton", "cuda:0")],
 )
-def test_invalid_backend_cli_fails_before_simulation_start(arguments, message):
-    """Reject bad selections in a child process without starting Isaac Sim."""
+def test_launcher_preserves_selected_preset(preset, device, monkeypatch):
+    from isaaclab_arena.utils.isaaclab_utils import simulation_app
+
+    args = get_isaaclab_arena_cli_parser().parse_args(["--presets", preset, "--device", device])
+    launched = []
+    monkeypatch.setattr(simulation_app, "AppLauncher", lambda values: launched.append(values) or object())
+    simulation_app.get_app_launcher(args)
+    assert launched[0]["presets"] == preset
+    assert args.presets is PhysicsBackend(preset)
+
+
+def test_launcher_keeps_simulation_only_namespace_compatible(monkeypatch):
+    from isaaclab_arena.utils.isaaclab_utils import simulation_app
+
+    args = SimpleNamespace(visualizer=["kit"], enable_cameras=True, livestream=-1)
+    launched = []
+    monkeypatch.setattr(simulation_app, "AppLauncher", lambda values: launched.append(values) or object())
+    simulation_app.get_app_launcher(args)
+    assert launched == [vars(args)]
+
+
+def test_invalid_backend_cli_fails_before_simulation_start():
+    """Reject Newton CPU before invoking the expensive AppLauncher."""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
             (
-                "import sys; from isaaclab_arena.cli.isaaclab_arena_cli import get_isaaclab_arena_cli_parser; "
-                "get_isaaclab_arena_cli_parser().parse_known_args(sys.argv[1:])"
+                "from isaaclab_arena.cli.isaaclab_arena_cli import get_isaaclab_arena_cli_parser; "
+                "from isaaclab_arena.utils.isaaclab_utils import simulation_app; "
+                "simulation_app.AppLauncher = lambda values: print('APP_LAUNCHED'); "
+                "args = get_isaaclab_arena_cli_parser().parse_args(['--presets', 'newton', '--device', 'cpu']); "
+                "simulation_app.get_app_launcher(args)"
             ),
-            *arguments,
         ],
         capture_output=True,
         text=True,
         check=False,
     )
-    assert result.returncode == 2, result.stderr
-    assert message in result.stderr
+    assert result.returncode == 1, result.stderr
+    assert "requires a CUDA device" in result.stderr
+    assert "APP_LAUNCHED" not in result.stdout

@@ -9,45 +9,12 @@ from isaaclab.app import AppLauncher
 
 from isaaclab_arena.cli.dataclass_cli import dataclass_from_cli
 from isaaclab_arena.environments.arena_env_builder_cfg import ArenaEnvBuilderCfg
-from isaaclab_arena.utils.physics_backend import (
-    PHYSICS_BACKEND_NAMES,
-    PhysicsBackend,
-    canonical_physics_backend,
-    resolve_physics_backend,
-    validate_physics_device,
-)
-
-
-def _physics_backend_from_argparse(args_cli: argparse.Namespace) -> PhysicsBackend | None:
-    backend = resolve_physics_backend(getattr(args_cli, "physics_backend", None), getattr(args_cli, "presets", None))
-    if backend is not None:
-        validate_physics_device(backend, args_cli.device)
-    return backend
+from isaaclab_arena.utils.physics_backend import PhysicsBackend, canonical_physics_backend
 
 
 def requested_physics_backend_from_argparse(args_cli: argparse.Namespace) -> str | None:
-    """Return the public name selected by either physics CLI option.
-
-    Args:
-        args_cli: Parsed Arena command-line arguments.
-
-    Returns:
-        The requested backend name, or None when the environment chooses its default.
-    """
-    backend = _physics_backend_from_argparse(args_cli)
-    return canonical_physics_backend(backend) if backend is not None else None
-
-
-class _ArenaArgumentParser(argparse.ArgumentParser):
-    """Reject incompatible physics selections before starting the simulation app."""
-
-    def parse_known_args(self, args=None, namespace=None):
-        args_cli, unknown = super().parse_known_args(args, namespace)
-        try:
-            _physics_backend_from_argparse(args_cli)
-        except ValueError as exc:
-            self.error(str(exc))
-        return args_cli, unknown
+    """Return the full implementation name selected by the Arena physics preset."""
+    return canonical_physics_backend(args_cli.presets) if args_cli.presets is not None else None
 
 
 # TODO(cvolk, 2026-07-03): [typed-config-migration] Delete this Namespace-to-config adapter after policy_runner,
@@ -61,17 +28,14 @@ def arena_env_builder_cfg_from_argparse(args_cli: argparse.Namespace) -> ArenaEn
     Returns:
         The configuration consumed by ``ArenaEnvBuilder``.
     """
-    presets = _physics_backend_from_argparse(args_cli)
-    cfg = dataclass_from_cli(ArenaEnvBuilderCfg, args_cli)
-    cfg.presets = presets
-    return cfg
+    return dataclass_from_cli(ArenaEnvBuilderCfg, args_cli)
 
 
 # TODO(cvolk, 2026-07-03): [typed-config-migration] Delete this parser pipeline and its add_* helpers after
 # policy_runner, experiment_runner, and the remaining argparse scripts accept typed configs.
 def get_isaaclab_arena_cli_parser() -> argparse.ArgumentParser:
     """Get a complete argument parser with both Isaac Lab and IsaacLab Arena arguments."""
-    parser = _ArenaArgumentParser(description="IsaacLab Arena CLI parser.")
+    parser = argparse.ArgumentParser(description="IsaacLab Arena CLI parser.")
     AppLauncher.add_app_launcher_args(parser)
     add_isaac_lab_cli_args(parser)
     add_isaaclab_arena_cli_args(parser)
@@ -143,12 +107,6 @@ def add_isaaclab_arena_cli_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help="Seed for solved object placement. Not supported with cached placement layouts.",
-    )
-    arena_group.add_argument(
-        "--physics-backend",
-        choices=list(PHYSICS_BACKEND_NAMES),
-        default=None,
-        help="Physics backend: isaacsim_physx (CPU/CUDA) or newton_mjwarp (CUDA only).",
     )
     arena_group.add_argument(
         "--presets",

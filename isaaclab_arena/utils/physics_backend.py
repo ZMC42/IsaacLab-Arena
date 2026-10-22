@@ -24,57 +24,9 @@ class PhysicsBackend(str, Enum):
         return self.value
 
 
-PHYSICS_BACKEND_NAMES = {
-    "isaacsim_physx": PhysicsBackend.PHYSX,
-    "newton_mjwarp": PhysicsBackend.NEWTON,
-}
-
-
-def physics_backend_from_name(name: str) -> PhysicsBackend:
-    """Resolve a public backend name to its Arena preset.
-
-    Args:
-        name: Public physics backend name.
-
-    Returns:
-        The corresponding Arena preset.
-    """
-    if name not in PHYSICS_BACKEND_NAMES:
-        raise ValueError(f"Unknown physics backend {name!r}; choose from {', '.join(PHYSICS_BACKEND_NAMES)}")
-    return PHYSICS_BACKEND_NAMES[name]
-
-
 def canonical_physics_backend(backend: PhysicsBackend) -> str:
-    """Return the public name for an Arena physics backend.
-
-    Args:
-        backend: Arena physics backend preset.
-
-    Returns:
-        The public physics backend name.
-    """
-    return next(name for name, preset in PHYSICS_BACKEND_NAMES.items() if preset == backend)
-
-
-def resolve_physics_backend(
-    physics_backend: str | None = None, preset: PhysicsBackend | None = None
-) -> PhysicsBackend | None:
-    """Reconcile public and legacy selectors, preserving an unspecified environment default.
-
-    Args:
-        physics_backend: Optional public backend name.
-        preset: Optional legacy Arena preset.
-
-    Returns:
-        The selected backend, or None when neither selector was supplied.
-    """
-    resolved = physics_backend_from_name(physics_backend) if physics_backend is not None else None
-    if preset is not None:
-        preset = PhysicsBackend(preset)
-        if resolved is not None and resolved is not preset:
-            raise ValueError(f"--physics-backend {physics_backend} conflicts with --presets {preset}")
-        resolved = preset
-    return resolved
+    """Return the full physics implementation name for an Arena preset."""
+    return {PhysicsBackend.PHYSX: "isaacsim_physx", PhysicsBackend.NEWTON: "newton_mjwarp"}[backend]
 
 
 def validate_physics_device(backend: PhysicsBackend, device: str) -> None:
@@ -98,8 +50,7 @@ def physics_protocol(env: ManagerBasedEnv) -> dict[str, Any]:
     Returns:
         JSON-serializable physics, camera, and package configuration.
     """
-    import hashlib
-    from importlib.metadata import distribution, version
+    from importlib.metadata import version
 
     from isaaclab.sensors import CameraCfg
     from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
@@ -147,7 +98,4 @@ def physics_protocol(env: ManagerBasedEnv) -> dict[str, Any]:
                 "warp-lang",
             )
         },
-        "newton_solver_sha256": hashlib.sha256(
-            distribution("newton").locate_file("newton/_src/solvers/mujoco/solver_mujoco.py").read_bytes()
-        ).hexdigest(),
     }
