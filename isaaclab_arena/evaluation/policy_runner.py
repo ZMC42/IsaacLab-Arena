@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import tqdm
 from importlib import import_module
 from typing import TYPE_CHECKING
 
 from isaaclab_arena.assets.registries import PolicyRegistry
-from isaaclab_arena.cli.isaaclab_arena_cli import get_isaaclab_arena_cli_parser
+from isaaclab_arena.cli.isaaclab_arena_cli import get_isaaclab_arena_cli_parser, requested_physics_backend_from_argparse
 from isaaclab_arena.evaluation.policy_runner_cli import (
     add_policy_cli_args,
     add_policy_runner_arguments,
@@ -22,6 +23,7 @@ from isaaclab_arena.metrics.metrics_logger import metrics_to_plain_python_types
 from isaaclab_arena.utils.hydra_overrides import assert_hydra_overrides
 from isaaclab_arena.utils.isaaclab_utils.simulation_app import SimulationAppContext
 from isaaclab_arena.utils.multiprocess import get_local_rank, get_world_size
+from isaaclab_arena.utils.physics_backend import physics_protocol
 from isaaclab_arena.utils.timer import Timer
 from isaaclab_arena.video.video_recording import VideoRecordingCfg, timestamped_run_dir, wrap_env_for_video
 from isaaclab_arena.visualization.report import build_report, serve_until_ctrl_c
@@ -211,6 +213,17 @@ def main():
             video_base_dir=output_dir,
         )
         env = arena_builder.make_registered(render_mode=video_cfg.render_mode)
+
+        protocol = {
+            **physics_protocol(env.unwrapped),
+            "requested_physics_backend": requested_physics_backend_from_argparse(args_cli),
+            "seed": args_cli.seed,
+            "num_envs": args_cli.num_envs,
+        }
+        os.makedirs(output_dir, exist_ok=True)
+        with open(os.path.join(output_dir, f"protocol_rank{local_rank}.json"), "w") as stream:
+            json.dump(protocol, stream, indent=2)
+            stream.write("\n")
 
         # Write per-episode results to disk.
         results_path = os.path.join(output_dir, f"episode_results_rank{local_rank}.jsonl")

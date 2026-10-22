@@ -57,7 +57,7 @@ from isaaclab_arena.terms.recorders import ArenaEnvRecorderManagerCfg
 from isaaclab_arena.utils.configclass import combine_configclass_instances, make_configclass
 from isaaclab_arena.utils.isaaclab_utils.warp_patch import install_empty_cpu_warp_to_torch_patch
 from isaaclab_arena.utils.multiprocess import get_local_rank
-from isaaclab_arena.utils.physics_backend import PhysicsBackend
+from isaaclab_arena.utils.physics_backend import PhysicsBackend, validate_physics_device
 from isaaclab_arena.variations import variations_hydra, variations_printing
 from isaaclab_arena.variations.variation_base import RunTimeVariationBase, VariationBase
 from isaaclab_arena.variations.variation_recorder import VariationRecorder
@@ -95,6 +95,7 @@ class ArenaEnvBuilder:
     ):
         self.arena_env = arena_env
         self.cfg = cfg
+        validate_physics_device(self.resolved_physics_backend, cfg.device)
         self.hydra_overrides = hydra_overrides
         self.interactive_scene_cfg = InteractiveSceneCfg(
             num_envs=cfg.num_envs, env_spacing=cfg.env_spacing, replicate_physics=False

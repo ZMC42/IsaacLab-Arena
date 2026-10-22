@@ -142,6 +142,13 @@ class GalileoG1LocomanipPickAndPlaceEnvironment(ArenaEnvironmentFactory[GalileoG
             )
 
         def env_cfg_callback(env_cfg):
+            from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+
+            physics = env_cfg.sim.physics
+            if isinstance(physics, NewtonCfg) and isinstance(physics.solver_cfg, MJWarpSolverCfg):
+                # Warehouse stepping exceeds the generic contact/constraint budgets.
+                physics.solver_cfg.nconmax = max(physics.solver_cfg.nconmax or 0, 1024)
+                physics.solver_cfg.njmax = max(physics.solver_cfg.njmax or 0, 1024)
             env_cfg = _apply_legacy_datagen_name_override(
                 env_cfg,
                 pick_up_object_name=pick_up_object.name,
