@@ -229,7 +229,7 @@ def _test_unbounded_partial_initial_reset(simulation_app, output_dir):
     env, started_episodes, results_path = _create_episode_limit_env(output_dir, (2, 2), record_trajectories=True)
     base_env = env.unwrapped
     try:
-        base_env.reset(env_ids=torch.tensor([0], device=base_env.device))
+        base_env.reset(env_ids=slice(0, 1))
         assert started_episodes == [(0, 0)]
         assert base_env.active_episode_mask.tolist() == [True, False]
         base_env.reset(env_ids=torch.tensor([1], device=base_env.device))

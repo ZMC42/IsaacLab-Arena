@@ -15,6 +15,7 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg, TiledCameraCfg  # noqa: F401
+from isaaclab.utils.images import is_depth_like, is_rgb_like
 
 from isaaclab_arena.assets.asset import Asset
 from isaaclab_arena.utils.configclass import make_configclass
@@ -79,7 +80,7 @@ def make_camera_observation_cfg(
     normalize: bool = False,
 ):
     """
-    Build a configclass instance that adds one ObsTerm per selected camera.
+    Build a configclass instance with one RGB or depth ObsTerm per selected camera output.
     The SceneEntity name equals the camera field name plus the data type used in the Scene.
     For example, if the camera field name is "robot_pov_cam" and the data type is "rgb", the SceneEntity name will be "robot_pov_cam_rgb".
     We create a class which has a member pointing to another class which is based on the ObsGroup class.
@@ -104,9 +105,15 @@ def make_camera_observation_cfg(
         dtypes = getattr(cam, "data_types", None) or ["rgb"]
         # one ObsTerm per modality
         for dt in dtypes:
+            if is_rgb_like(dt):
+                image_term = mdp.image_rgb
+            elif is_depth_like(dt):
+                image_term = mdp.image_depth
+            else:
+                raise ValueError(f"Arena camera observations support RGB and depth outputs, got {dt!r}.")
             field_name = f"{name}_{dt}"
             term = ObsTerm(
-                func=mdp.image,
+                func=image_term,
                 params={"sensor_cfg": SceneEntityCfg(name), "data_type": dt, "normalize": normalize},
             )
             # Field name on ObservationsCfg: use the camera name (or add suffix if you like)

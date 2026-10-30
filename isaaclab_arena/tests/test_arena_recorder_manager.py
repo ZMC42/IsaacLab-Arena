@@ -73,7 +73,7 @@ def _test_recording_follows_episode_assignments(_simulation_app):
 
         env.active_episode_mask[[1, 3]] = True
         env.reset_env_ids = torch.tensor([1])
-        recorder.record_post_reset(torch.tensor([3, 1, 0]))
+        recorder.record_post_reset(slice(1, 4, 2))
         assert env.post_reset_calls == [[1]]
         assert recorder.get_episode(1).data["initial_state"][0].item() == 1
         assert recorder.get_episode(3).is_empty()
@@ -88,15 +88,17 @@ def _test_recording_follows_episode_assignments(_simulation_app):
             env_ids=[3, 2, 1],
         )
         recorder.add_to_episodes("actions", torch.arange(4))
+        recorder.add_to_episodes("slice_states", torch.tensor([100, 300]), env_ids=slice(1, 4, 2))
         for env_id, expected_position in ((1, 10), (3, 30)):
             episode = recorder.get_episode(env_id)
             assert episode.data["states"]["nested"]["position"][0].item() == expected_position
             assert episode.data["states"]["warp"][0].item() == expected_position * 10
             assert episode.data["actions"][0].item() == env_id
+            assert episode.data["slice_states"][0].item() == env_id * 100
         assert recorder.get_episode(0).is_empty()
         assert recorder.get_episode(2).is_empty()
 
-        recorder.record_pre_reset(torch.tensor([0, 1, 2]))
+        recorder.record_pre_reset(slice(0, 3))
         assert env.pre_reset_calls == [[1]]
         finished_episode = recorder.get_episode(1)
         assert finished_episode.success

@@ -32,14 +32,14 @@ class ArenaRecorderManager(RecorderManager):
         self,
         key: str | None,
         value: torch.Tensor | wp.array | dict | None,
-        env_ids: Sequence[int] | torch.Tensor | None = None,
+        env_ids: Sequence[int] | torch.Tensor | slice | None = None,
     ) -> None:
         """Append rows belonging to active episodes, preserving their incoming order.
 
         Args:
             key: Dataset key, or None when a recorder term has no data.
             value: Nested tensors whose leading dimension follows env_ids.
-            env_ids: Corresponding environment IDs, or None for all environments.
+            env_ids: Corresponding environment IDs, a slice, or None for all environments.
         """
         if not self.active_terms or key is None:
             return
@@ -62,13 +62,13 @@ class ArenaRecorderManager(RecorderManager):
 
     def record_pre_reset(
         self,
-        env_ids: Sequence[int] | torch.Tensor | None,
+        env_ids: Sequence[int] | torch.Tensor | slice | None,
         force_export_or_skip: bool | None = None,
     ) -> None:
         """Record episode results before Arena resets or deactivates environments.
 
         Args:
-            env_ids: Environments requesting a reset, or None for all environments.
+            env_ids: Environment IDs or a slice requesting a reset, or None for all environments.
             force_export_or_skip: Override the configured export behavior when provided.
         """
         if not self.active_terms:
@@ -78,11 +78,11 @@ class ArenaRecorderManager(RecorderManager):
         if finishing_env_ids.numel() > 0:
             super().record_pre_reset(finishing_env_ids, force_export_or_skip)
 
-    def record_post_reset(self, env_ids: Sequence[int] | torch.Tensor | None) -> None:
+    def record_post_reset(self, env_ids: Sequence[int] | torch.Tensor | slice | None) -> None:
         """Record initial states only for environments Arena actually reset.
 
         Args:
-            env_ids: Environments requesting a reset, or None for all environments.
+            env_ids: Environment IDs or a slice requesting a reset, or None for all environments.
         """
         if not self.active_terms:
             return
@@ -93,8 +93,10 @@ class ArenaRecorderManager(RecorderManager):
         if reset_env_ids.numel() > 0:
             super().record_post_reset(reset_env_ids)
 
-    def _normalize_env_ids(self, env_ids: Sequence[int] | torch.Tensor | None) -> torch.Tensor:
+    def _normalize_env_ids(self, env_ids: Sequence[int] | torch.Tensor | slice | None) -> torch.Tensor:
         """Return environment IDs on the environment's device."""
         if env_ids is None:
             return torch.arange(self._env.num_envs, device=self._env.device)
+        if isinstance(env_ids, slice):
+            return torch.arange(self._env.num_envs, device=self._env.device)[env_ids]
         return torch.as_tensor(env_ids, dtype=torch.long, device=self._env.device)
