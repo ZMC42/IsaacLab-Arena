@@ -216,7 +216,7 @@ def find_shallowest_rigid_body(
     # Avoid loading pxr at module scope before SimulationApp starts, which happens in unit tests.
     from pxr import Usd
 
-    stage = Usd.Stage.Open(usd_path)
+    stage = Usd.Stage.Open(retrieve_file_path(usd_path))
     if not stage:
         raise ValueError(f"Error: Could not open USD file at {usd_path}")
     if variants:
