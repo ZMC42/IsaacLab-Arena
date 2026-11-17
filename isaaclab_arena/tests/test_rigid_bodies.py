@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from isaaclab_arena.utils.usd import rigid_bodies
 from isaaclab_arena.utils.usd.rigid_bodies import (
     find_shallowest_rigid_body,
     find_shallowest_rigid_body_from_stage,
@@ -169,4 +170,20 @@ def test_find_shallowest_rigid_body_is_relative_to_nested_default_prim(tmp_path:
             relative_to_default_prim=True,
         )
         == "/rigid_body"
+    )
+
+
+def test_find_shallowest_rigid_body_uses_cached_remote_usd(tmp_path: Path, monkeypatch):
+    """Contact sensor lookup can use an available local copy of an unavailable remote USD."""
+    usd_path = tmp_path / "cached.usda"
+    _write_nested_rigid_bodies_usd(usd_path, [("/Root/Geometry/body", False, True)])
+    monkeypatch.setattr(rigid_bodies, "retrieve_file_path", lambda path: str(usd_path))
+
+    assert (
+        find_shallowest_rigid_body(
+            "https://unavailable.invalid/object.usd",
+            within_default_prim=True,
+            relative_to_default_prim=True,
+        )
+        == "/Geometry/body"
     )
